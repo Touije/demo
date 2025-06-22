@@ -1,10 +1,13 @@
 package com.exemple.acheteurservice.service;
 
+import com.exemple.acheteurservice.client.ProduitServiceClient;
+import com.exemple.acheteurservice.config.KafkaTopicConfig;
 import com.exemple.acheteurservice.domain.Acheteur;
 import com.exemple.acheteurservice.dto.AchatRequestDTO;
 import com.exemple.acheteurservice.dto.AcheteurUpdateRequestDTO;
 import com.exemple.acheteurservice.dto.CreationAcheteurRequestDTO;
-import com.exemple.acheteurservice.events.StockADeduireEvent;
+import com.exemple.acheteurservice.dto.ProduitDTO;
+import com.exemple.acheteurservice.events.AchatEffectueEvent;
 import com.exemple.acheteurservice.repository.AcheteurRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -21,10 +24,14 @@ import java.util.stream.StreamSupport;
 public class AcheteurServiceImpl implements AcheteurServiceInterface {
 
     private final AcheteurRepository acheteurRepository;
-    private final KafkaTemplate<String, StockADeduireEvent> kafkaTemplate;
+    private final ProduitServiceClient produitServiceClient;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public AcheteurServiceImpl(AcheteurRepository acheteurRepository, KafkaTemplate<String, StockADeduireEvent> kafkaTemplate) {
+    public AcheteurServiceImpl(AcheteurRepository acheteurRepository,
+                               ProduitServiceClient produitServiceClient,
+                               KafkaTemplate<String, Object> kafkaTemplate) {
         this.acheteurRepository = acheteurRepository;
+        this.produitServiceClient = produitServiceClient;
         this.kafkaTemplate = kafkaTemplate;
     }
 
@@ -74,16 +81,37 @@ public class AcheteurServiceImpl implements AcheteurServiceInterface {
     public void effectuerAchat(AchatRequestDTO achatRequest) {
         log.info("Tentative d'achat pour l'acheteur {} et le produit {}", achatRequest.getAcheteurId(), achatRequest.getProduitId());
 
+        // 1. Valider que l'acheteur existe
+        Acheteur acheteur = acheteurRepository.findById(achatRequest.getAcheteurId())
+                .orElseThrow(() -> new NoSuchElementException("Acheteur non trouvé avec l'id: " + achatRequest.getAcheteurId()));
+
+        // 2. Valider que la quantité est positive
         if (achatRequest.getQuantite() <= 0) {
             throw new IllegalArgumentException("La quantité achetée doit être supérieure à zéro.");
         }
 
-        acheteurRepository.findById(achatRequest.getAcheteurId())
-                .orElseThrow(() -> new NoSuchElementException("Acheteur non trouvé avec l'id: " + achatRequest.getAcheteurId()));
+        // 3. Valider le produit et le stock via OpenFeign
+        log.debug("Appel du produit-service pour valider le produit {}", achatRequest.getProduitId());
+        ProduitDTO produit;
+        try {
+            produit = produitServiceClient.getProduitById(achatRequest.getProduitId());
+        } catch (Exception e) {
+            log.error("Erreur lors de l'appel au produit-service pour le produit {}", achatRequest.getProduitId(), e);
+            throw new IllegalStateException("Le service de produit est indisponible ou le produit n'existe pas.", e);
+        }
 
-        // Publication de l'événement Kafka pour la déduction de stock
-        StockADeduireEvent event = new StockADeduireEvent(achatRequest.getProduitId(), achatRequest.getQuantite());
-        kafkaTemplate.send("stock-deduction-topic", event);
-        log.info("Événement StockADeduireEvent publié sur Kafka pour le produit {} (quantité: {})", event.getProduitId(), event.getQuantite());
+        if (produit.getQuantiteEnStock() < achatRequest.getQuantite()) {
+            throw new IllegalStateException("Stock insuffisant pour le produit: " + produit.getNom());
+        }
+
+        // 4. Publier l'événement d'achat réussi
+        AchatEffectueEvent event = new AchatEffectueEvent(
+                achatRequest.getAcheteurId(),
+                achatRequest.getProduitId(),
+                achatRequest.getQuantite()
+        );
+
+        kafkaTemplate.send(KafkaTopicConfig.ACHAT_EFFECTUE_TOPIC, event);
+        log.info("Événement AchatEffectueEvent publié sur Kafka pour l'acheteur {} et le produit {}", event.getAcheteurId(), event.getProduitId());
     }
 } 

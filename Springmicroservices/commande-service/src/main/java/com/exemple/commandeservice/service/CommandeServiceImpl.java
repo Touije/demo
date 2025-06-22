@@ -10,6 +10,7 @@ import com.exemple.commandeservice.client.AcheteurServiceClient;
 import com.exemple.commandeservice.client.ProduitServiceClient;
 import com.exemple.commandeservice.mapper.CommandeMapper;
 import com.exemple.commandeservice.repository.CommandeRepository;
+import com.exemple.commandeservice.config.KafkaTopicConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
@@ -39,21 +40,24 @@ public class CommandeServiceImpl implements CommandeServiceInterface {
         this.produitServiceClient = produitServiceClient;
     }
 
-    @KafkaListener(topics = "commande-creation-topic", groupId = "commande-service-group")
+    @KafkaListener(topics = KafkaTopicConfig.ACHAT_EFFECTUE_TOPIC, groupId = "commande-service-group")
     public void handleAchatEffectue(AchatEffectueEvent event) {
-        log.info("Événement AchatEffectueEvent reçu pour acheteur {} et produit {} (quantité: {})", event.getAcheteurId(), event.getProduitId(), event.getQuantite());
-        creerCommande(event.getAcheteurId(), event.getProduitId(), event.getQuantite());
-    }
+        log.info("Événement AchatEffectueEvent reçu pour créer une commande pour l'acheteur {}", event.getAcheteurId());
 
-    @Override
-    public void creerCommande(Long acheteurId, Long produitId, int quantite) {
-        Commande commande = new Commande();
-        commande.setAcheteurId(acheteurId);
-        commande.setProduitId(produitId);
-        commande.setQuantite(quantite);
-        commande.setStatut(StatutCommande.EN_COURS);
-        commande.setDateCommande(LocalDateTime.now());
-        commandeRepository.save(commande);
+        try {
+            // Créer et sauvegarder la nouvelle commande
+            Commande commande = new Commande();
+            commande.setAcheteurId(event.getAcheteurId());
+            commande.setProduitId(event.getProduitId());
+            commande.setQuantite(event.getQuantite());
+            commande.setStatut(StatutCommande.EN_COURS);
+            // On pourrait récupérer le prix via le produitServiceClient pour calculer le montant total
+            commandeRepository.save(commande);
+            log.info("Commande créée avec succès avec l'ID {}", commande.getId());
+        } catch (Exception e) {
+            log.error("Échec de la création de la commande pour l'acheteur {}: {}", event.getAcheteurId(), e.getMessage(), e);
+            // Gérer l'échec, potentiellement publier un événement de compensation
+        }
     }
 
     @Override
@@ -66,6 +70,7 @@ public class CommandeServiceImpl implements CommandeServiceInterface {
 
     @Override
     public CommandeDetailsResponseDTO getCommandeById(Long id) {
+        log.info("Récupération de la commande avec l'ID: {}", id);
         Commande commande = commandeRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Commande non trouvée avec l'id: " + id));
         return mapToDetailsDto(commande);
