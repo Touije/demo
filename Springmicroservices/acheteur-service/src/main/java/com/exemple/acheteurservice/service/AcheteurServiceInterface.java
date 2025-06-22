@@ -1,0 +1,17 @@
+package com.exemple.acheteurservice.service;
+
+import com.exemple.acheteurservice.domain.Acheteur;
+import com.exemple.acheteurservice.dto.AchatRequestDTO;
+import com.exemple.acheteurservice.dto.AcheteurUpdateRequestDTO;
+import com.exemple.acheteurservice.dto.CreationAcheteurRequestDTO;
+
+import java.util.List;
+
+public interface AcheteurServiceInterface {
+    Acheteur createAcheteur(CreationAcheteurRequestDTO request);
+    List<Acheteur> getAcheteurs();
+    Acheteur getAcheteurById(Long id);
+    Acheteur updateAcheteur(Long id, AcheteurUpdateRequestDTO request);
+    void deleteAcheteur(Long id);
+    void effectuerAchat(AchatRequestDTO achatRequest);
+} 
