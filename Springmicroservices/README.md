@@ -57,7 +57,6 @@ graph TD
     PS -- CRUD --> DB_P
     CSVC -- CRUD --> DB_C
 ```
-
 ## Description des Services
 
 ### Services d'Infrastructure
