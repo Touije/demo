@@ -9,53 +9,53 @@ Le schéma ci-dessous illustre les différents composants de l'architecture et l
 ```mermaid
 graph TD
     subgraph "Client"
-        U[Utilisateur / Client]
+        U["Utilisateur / Client"]
     end
 
     subgraph "Infrastructure"
-        GW[API Gateway<br/>(gateway-service:8888)]
-        DS[Discovery Service<br/>(discovery-service:8761<br/>Eureka)]
-        CS[Config Server<br/>(config-service:9999)]
-        K[Message Broker<br/>(Kafka)]
+        GW["API Gateway<br/>(gateway-service:8888)"]
+        DS["Discovery Service<br/>(discovery-service:8761)<br/>Eureka"]
+        CS["Config Server<br/>(config-service:9999)"]
+        K["Message Broker<br/>(Kafka)"]
     end
 
     subgraph "Services Métier"
-        AS[Acheteur Service<br/>(acheteur-service:9001)]
-        PS[Produit Service<br/>(produit-service:9004)]
-        CSVC[Commande Service<br/>(commande-service:9003)]
+        AS["Acheteur Service<br/>(acheteur-service:9001)"]
+        PS["Produit Service<br/>(produit-service:9004)"]
+        CSVC["Commande Service<br/>(commande-service:9003)"]
     end
     
     subgraph "Bases de Données"
-        DB_A[DB Acheteur<br/>(PostgreSQL)]
-        DB_P[DB Produit<br/>(PostgreSQL)]
-        DB_C[DB Commande<br/>(PostgreSQL)]
+        DB_A["DB Acheteur<br/>(PostgreSQL)"]
+        DB_P["DB Produit<br/>(PostgreSQL)"]
+        DB_C["DB Commande<br/>(PostgreSQL)"]
     end
 
-    U -- Requête HTTP --> GW
+    U -->|"Requête HTTP"| GW
 
-    GW -- Route --> AS
-    GW -- Route --> PS
-    GW -- Route --> CSVC
+    GW -->|"Route"| AS
+    GW -->|"Route"| PS
+    GW -->|"Route"| CSVC
 
-    AS -- Enregistrement & Découverte --> DS
-    PS -- Enregistrement & Découverte --> DS
-    CSVC -- Enregistrement & Découverte --> DS
-    GW -- Découverte --> DS
+    AS -->|"Enregistrement & Découverte"| DS
+    PS -->|"Enregistrement & Découverte"| DS
+    CSVC -->|"Enregistrement & Découverte"| DS
+    GW -->|"Découverte"| DS
 
-    AS -- Récupère Configuration --> CS
-    PS -- Récupère Configuration --> CS
-    CSVC -- Récupère Configuration --> CS
-    GW -- Récupère Configuration --> CS
+    AS -->|"Récupère Configuration"| CS
+    PS -->|"Récupère Configuration"| CS
+    CSVC -->|"Récupère Configuration"| CS
+    GW -->|"Récupère Configuration"| CS
 
-    AS -- Appel REST Synchrone<br/>(Validation stock) --> PS
+    AS -->|"Appel REST Synchrone<br/>(Validation stock)"| PS
     
-    AS -- Publie Événement<br/>(AchatEffectueEvent) --> K
-    K -- Consomme Événement --> CSVC
-    K -- Consomme Événement --> PS
+    AS -->|"Publie Événement<br/>(AchatEffectueEvent)"| K
+    K -->|"Consomme Événement"| CSVC
+    K -->|"Consomme Événement"| PS
 
-    AS -- CRUD --> DB_A
-    PS -- CRUD --> DB_P
-    CSVC -- CRUD --> DB_C
+    AS -->|"CRUD"| DB_A
+    PS -->|"CRUD"| DB_P
+    CSVC -->|"CRUD"| DB_C
 ```
 
 ## Description des Services
