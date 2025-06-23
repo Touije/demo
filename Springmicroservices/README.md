@@ -1,95 +1,100 @@
-# Springmicroservices
+# Architecture Microservices
 
-## Présentation
-Ce projet illustre une architecture microservices basée sur Spring Boot. Il gère un système d'achats avec trois domaines principaux : acheteurs, commandes et produits. L'architecture inclut également une gateway, un service de configuration centralisée et un service de découverte.
+Ce projet est une démonstration d'une architecture microservices basée sur Spring Boot et Spring Cloud. Il simule une application e-commerce simple avec des services pour les acheteurs, les produits et les commandes.
 
-## Architecture globale
+## Schéma de l'Architecture
 
+Le schéma ci-dessous illustre les différents composants de l'architecture et leurs interactions.
+
+```mermaid
+graph TD
+    subgraph "Client"
+        U[Utilisateur / Client]
+    end
+
+    subgraph "Infrastructure"
+        GW[API Gateway<br/>(gateway-service:8888)]
+        DS[Discovery Service<br/>(discovery-service:8761<br/>Eureka)]
+        CS[Config Server<br/>(config-service:9999)]
+        K[Message Broker<br/>(Kafka)]
+    end
+
+    subgraph "Services Métier"
+        AS[Acheteur Service<br/>(acheteur-service:9001)]
+        PS[Produit Service<br/>(produit-service:9004)]
+        CSVC[Commande Service<br/>(commande-service:9003)]
+    end
+    
+    subgraph "Bases de Données"
+        DB_A[DB Acheteur<br/>(PostgreSQL)]
+        DB_P[DB Produit<br/>(PostgreSQL)]
+        DB_C[DB Commande<br/>(PostgreSQL)]
+    end
+
+    U -- Requête HTTP --> GW
+
+    GW -- Route --> AS
+    GW -- Route --> PS
+    GW -- Route --> CSVC
+
+    AS -- Enregistrement & Découverte --> DS
+    PS -- Enregistrement & Découverte --> DS
+    CSVC -- Enregistrement & Découverte --> DS
+    GW -- Découverte --> DS
+
+    AS -- Récupère Configuration --> CS
+    PS -- Récupère Configuration --> CS
+    CSVC -- Récupère Configuration --> CS
+    GW -- Récupère Configuration --> CS
+
+    AS -- Appel REST Synchrone<br/>(Validation stock) --> PS
+    
+    AS -- Publie Événement<br/>(AchatEffectueEvent) --> K
+    K -- Consomme Événement --> CSVC
+    K -- Consomme Événement --> PS
+
+    AS -- CRUD --> DB_A
+    PS -- CRUD --> DB_P
+    CSVC -- CRUD --> DB_C
 ```
-[Client]
-   |
-   v
-[Gateway Service] <-> [Discovery Service]
-   |         |         |         |
-   v         v         v         v
-[Acheteur] [Commande] [Produit] [Config Service]
-```
 
-- **Gateway Service** : point d'entrée unique, routage des requêtes
-- **Discovery Service** : enregistrement/découverte des microservices (Eureka)
-- **Config Service** : configuration centralisée (Spring Cloud Config)
-- **Acheteur/Commande/Produit** : services métiers
+## Description des Services
 
-## Description des microservices
+### Services d'Infrastructure
+*   **API Gateway (`gateway-service`)**: Point d'entrée unique pour toutes les requêtes des clients. Il gère le routage dynamique vers les services métier en s'appuyant sur le Discovery Service.
+*   **Discovery Service (`discovery-service`)**: Annuaire de services (Eureka) où chaque microservice s'enregistre. Cela permet une découverte dynamique des instances de service.
+*   **Config Server (`config-service`)**: Centralise la gestion de la configuration pour tous les microservices. Les configurations sont stockées dans le répertoire `micro-config`.
+*   **Message Broker (Kafka)**: Utilisé pour la communication asynchrone et événementielle entre les services, ce qui permet de les découpler.
 
-### Acheteur Service
-- **Rôle** : gestion des acheteurs et des achats
-- **Endpoints principaux** :
-  - `POST /acheteurs` : créer un acheteur
-  - `GET /acheteurs` : lister les acheteurs
-  - `GET /acheteurs/{id}` : obtenir un acheteur
-  - `PUT /acheteurs/{id}` : mettre à jour un acheteur
-  - `DELETE /acheteurs/{id}` : supprimer un acheteur
-  - `POST /acheteurs/achat` : effectuer un achat
+### Services Métier
+*   **Acheteur Service (`acheteur-service`)**: Gère les informations des acheteurs (création, lecture, mise à jour, suppression). Il initie le processus d'achat.
+*   **Produit Service (`produit-service`)**: Gère le catalogue des produits, y compris les informations sur le stock.
+*   **Commande Service (`commande-service`)**: Gère la création et le suivi des commandes.
 
-### Commande Service
-- **Rôle** : gestion des commandes
-- **Endpoints principaux** :
-  - `POST /commandes` : créer une commande
-  - `GET /commandes` : lister les commandes
-  - `GET /commandes/{id}` : obtenir une commande
-  - `DELETE /commandes/{id}` : supprimer une commande
-  - `PUT /commandes/{commandeId}/statut` : changer le statut
+## Flux de Communication
 
-### Produit Service
-- **Rôle** : gestion des produits et du stock
-- **Endpoints principaux** :
-  - `POST /produits` : créer un produit
-  - `GET /produits` : lister les produits
-  - `GET /produits/{id}` : obtenir un produit
-  - `PUT /produits/{id}` : mettre à jour un produit
-  - `DELETE /produits/{id}` : supprimer un produit
-  - `POST /produits/{id}/decrementer-stock?quantite=x` : décrémenter le stock
+Le système utilise deux principaux modes de communication :
 
-### Gateway Service
-- **Rôle** : point d'entrée unique, gestion du routage
+1.  **Communication Synchrone (REST)**: Utilisée pour les requêtes qui nécessitent une réponse immédiate. Par exemple, lorsque `acheteur-service` vérifie le stock disponible auprès du `produit-service` avant de valider un achat. Cette communication est facilitée par OpenFeign.
+2.  **Communication Asynchrone (Événementielle avec Kafka)**: Utilisée pour découpler les services. Lorsqu'un achat est effectué, `acheteur-service` publie un événement `AchatEffectueEvent`. Le `commande-service` et le `produit-service` consomment cet événement pour respectivement créer une commande et décrémenter le stock.
 
-### Config Service
-- **Rôle** : centralisation de la configuration (Spring Cloud Config)
+## Démarrage
 
-### Discovery Service
-- **Rôle** : découverte des services (Eureka)
+1.  **Prérequis**: Docker, Docker Compose, JDK 17, Maven.
+2.  **Lancer l'infrastructure**:
+    ```bash
+    docker-compose up -d
+    ```
+    Cette commande démarre Zookeeper et Kafka.
+3.  **Lancer les services**: Démarrez chaque service Spring Boot (Config, Discovery, Gateway, et les services métier) via votre IDE ou en utilisant Maven :
+    ```bash
+    # Pour chaque service
+    mvn spring-boot:run
+    ```
+    **Ordre de démarrage conseillé** :
+    1. `config-service`
+    2. `discovery-service`
+    3. `gateway-service`
+    4. Les autres services (`acheteur-service`, `produit-service`, `commande-service`)
 
-## Exemple de flux métier (Achat)
-1. Un client effectue un achat via `POST /acheteurs/achat`.
-2. Le service acheteur crée une commande via le service commande.
-3. Le service commande réserve les produits via le service produit.
-4. Le stock du produit est décrémenté.
-5. Les statuts sont mis à jour et les informations sont renvoyées au client.
-
-## Démarrage du projet
-
-### Prérequis
-- Java 17+
-- Maven
-- Docker & Docker Compose
-
-### Lancement
-1. Cloner le dépôt
-2. Se placer dans le dossier `Springmicroservices`
-3. Lancer la commande :
-   ```bash
-   docker-compose up --build
-   ```
-4. Les services seront accessibles via la gateway (par défaut sur le port 8080)
-
-## Technologies utilisées
-- Spring Boot
-- Spring Cloud (Config, Eureka)
-- Spring Data JPA
-- Docker, Docker Compose
-- Maven
-
-## Annexes
-- Chaque service possède ses propres tests unitaires et d'intégration (voir dossier `src/test` de chaque microservice).
-- La configuration centralisée se trouve dans le dossier `micro-config`. 
+</rewritten_file> 
