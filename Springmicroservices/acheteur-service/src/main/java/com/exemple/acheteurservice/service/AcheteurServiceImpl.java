@@ -1,16 +1,15 @@
 package com.exemple.acheteurservice.service;
 
 import com.exemple.acheteurservice.client.ProduitServiceClient;
-import com.exemple.acheteurservice.config.KafkaTopicConfig;
+import com.exemple.acheteurservice.client.CommandeServiceClient;
 import com.exemple.acheteurservice.domain.Acheteur;
 import com.exemple.acheteurservice.dto.AchatRequestDTO;
 import com.exemple.acheteurservice.dto.AcheteurUpdateRequestDTO;
 import com.exemple.acheteurservice.dto.CreationAcheteurRequestDTO;
 import com.exemple.acheteurservice.dto.ProduitDTO;
-import com.exemple.acheteurservice.events.AchatEffectueEvent;
 import com.exemple.acheteurservice.repository.AcheteurRepository;
+import com.exemple.acheteurservice.dto.CreationCommandeRequestDTO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,14 +24,14 @@ public class AcheteurServiceImpl implements AcheteurServiceInterface {
 
     private final AcheteurRepository acheteurRepository;
     private final ProduitServiceClient produitServiceClient;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final CommandeServiceClient commandeServiceClient;
 
     public AcheteurServiceImpl(AcheteurRepository acheteurRepository,
                                ProduitServiceClient produitServiceClient,
-                               KafkaTemplate<String, Object> kafkaTemplate) {
+                               CommandeServiceClient commandeServiceClient) {
         this.acheteurRepository = acheteurRepository;
         this.produitServiceClient = produitServiceClient;
-        this.kafkaTemplate = kafkaTemplate;
+        this.commandeServiceClient = commandeServiceClient;
     }
 
     @Override
@@ -104,14 +103,14 @@ public class AcheteurServiceImpl implements AcheteurServiceInterface {
             throw new IllegalStateException("Stock insuffisant pour le produit: " + produit.getNom());
         }
 
-        // 4. Publier l'événement d'achat réussi
-        AchatEffectueEvent event = new AchatEffectueEvent(
-                achatRequest.getAcheteurId(),
-                achatRequest.getProduitId(),
-                achatRequest.getQuantite()
-        );
+        // 4. Décrémenter le stock du produit (appel synchrone)
+        produitServiceClient.decrementerStock(achatRequest.getProduitId(), achatRequest.getQuantite());
 
-        kafkaTemplate.send(KafkaTopicConfig.ACHAT_EFFECTUE_TOPIC, event);
-        log.info("Événement AchatEffectueEvent publié sur Kafka pour l'acheteur {} et le produit {}", event.getAcheteurId(), event.getProduitId());
+        // 5. Créer la commande (appel synchrone)
+        CreationCommandeRequestDTO commandeRequest = new CreationCommandeRequestDTO();
+        commandeRequest.setAcheteurId(achatRequest.getAcheteurId());
+        commandeRequest.setProduitId(achatRequest.getProduitId());
+        commandeRequest.setQuantite(achatRequest.getQuantite());
+        commandeServiceClient.creerCommande(commandeRequest);
     }
 } 

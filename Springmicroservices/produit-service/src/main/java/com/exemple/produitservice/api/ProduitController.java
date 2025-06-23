@@ -50,4 +50,10 @@ public class ProduitController {
     public void deleteProduit(@PathVariable Long id) {
         produitService.deleteProduit(id);
     }
+
+    @PostMapping("/{id}/decrementer-stock")
+    @ResponseStatus(HttpStatus.OK)
+    public void decrementerStock(@PathVariable Long id, @RequestParam int quantite) {
+        produitService.decrementerStock(id, quantite);
+    }
 } 

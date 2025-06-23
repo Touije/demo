@@ -6,10 +6,7 @@ import com.exemple.produitservice.dto.ProduitUpdateRequestDTO;
 import com.exemple.produitservice.events.AchatEffectueEvent;
 import com.exemple.produitservice.events.ProduitEvent;
 import com.exemple.produitservice.repository.ProduitRepository;
-import com.exemple.produitservice.config.KafkaTopicConfig;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,23 +22,9 @@ import java.util.stream.StreamSupport;
 public class ProduitServiceImpl implements ProduitServiceInterface {
 
     private final ProduitRepository produitRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public ProduitServiceImpl(ProduitRepository produitRepository, KafkaTemplate<String, Object> kafkaTemplate) {
+    public ProduitServiceImpl(ProduitRepository produitRepository) {
         this.produitRepository = produitRepository;
-        this.kafkaTemplate = kafkaTemplate;
-    }
-
-    @KafkaListener(topics = KafkaTopicConfig.ACHAT_EFFECTUE_TOPIC, groupId = "produit-service-group")
-    public void handleAchatEffectue(AchatEffectueEvent event) {
-        log.info("Événement d'achat reçu pour déduire le stock du produit {} avec une quantité de {}", event.getProduitId(), event.getQuantite());
-        try {
-            decrementerStock(event.getProduitId(), event.getQuantite());
-            log.info("Stock déduit avec succès pour le produit {}", event.getProduitId());
-        } catch (Exception e) {
-            log.error("Échec de la déduction de stock pour le produit {}: {}", event.getProduitId(), e.getMessage());
-            // Ici, on pourrait publier un événement de compensation
-        }
     }
 
     @Override
@@ -52,9 +35,6 @@ public class ProduitServiceImpl implements ProduitServiceInterface {
         produit.setDescription(request.getDescription());
         produit.setQuantiteEnStock(request.getQuantiteEnStock());
         Produit savedProduit = produitRepository.save(produit);
-        
-        // Publier l'événement de création
-        kafkaTemplate.send(KafkaTopicConfig.PRODUCT_EVENTS_TOPIC, new ProduitEvent(savedProduit.getId(), savedProduit.getNom(), savedProduit.getDescription(), savedProduit.getPrix(), savedProduit.getQuantiteEnStock()));
         
         return savedProduit;
     }
@@ -80,9 +60,6 @@ public class ProduitServiceImpl implements ProduitServiceInterface {
         produit.setPrix(request.getPrix());
         produit.setQuantiteEnStock(request.getQuantiteEnStock());
         Produit updatedProduit = produitRepository.save(produit);
-
-        // Publier l'événement de mise à jour
-        kafkaTemplate.send(KafkaTopicConfig.PRODUCT_EVENTS_TOPIC, new ProduitEvent(updatedProduit.getId(), updatedProduit.getNom(), updatedProduit.getDescription(), updatedProduit.getPrix(), updatedProduit.getQuantiteEnStock()));
         
         return updatedProduit;
     }
@@ -93,9 +70,6 @@ public class ProduitServiceImpl implements ProduitServiceInterface {
             throw new NoSuchElementException("Produit non trouvé avec l'id: " + id);
         }
         produitRepository.deleteById(id);
-        
-        // Publier l'événement de suppression (avec un payload vide ou un marqueur)
-        kafkaTemplate.send(KafkaTopicConfig.PRODUCT_EVENTS_TOPIC, String.valueOf(id), null);
     }
 
     @Override
